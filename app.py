@@ -140,7 +140,10 @@ if "portfolio"    not in st.session_state: st.session_state.portfolio    = DEMO_
 if "is_demo"      not in st.session_state: st.session_state.is_demo      = True
 if "page"         not in st.session_state: st.session_state.page         = "Dashboard"
 if "chat_history" not in st.session_state: st.session_state.chat_history = []
-if "api_key"      not in st.session_state: st.session_state.api_key      = ""
+# Load API key from Streamlit secrets if available (set in Streamlit Cloud dashboard)
+if "api_key" not in st.session_state:
+    try: st.session_state.api_key = st.secrets["ANTHROPIC_API_KEY"]
+    except: st.session_state.api_key = ""
 if "ib_memo"      not in st.session_state: st.session_state.ib_memo      = ""
 if "show_add"     not in st.session_state: st.session_state.show_add     = False
 
