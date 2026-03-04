@@ -29,7 +29,10 @@ st.markdown("""
 }
 html,body,[class*="css"]{font-family:'DM Mono',monospace;background:var(--cream);color:var(--text);}
 .stApp{background:var(--cream);background-image:radial-gradient(ellipse at 15% 0%,rgba(201,168,76,0.09) 0%,transparent 55%),radial-gradient(ellipse at 85% 100%,rgba(26,58,107,0.06) 0%,transparent 55%);}
-[data-testid="stSidebar"]{background:var(--brown2)!important;border-right:1px solid rgba(201,168,76,0.2)!important;}
+[data-testid="stSidebar"]{background:var(--brown2)!important;border-right:1px solid rgba(201,168,76,0.2)!important;min-width:300px!important;}
+[data-testid="stSidebarCollapsedControl"]{display:none!important;}
+[data-testid="collapsedControl"]{display:none!important;}
+section[data-testid="stSidebar"]>div:first-child{padding-top:0!important;}
 [data-testid="stSidebar"] *{color:#f3ede2!important;}
 [data-testid="stSidebar"] input{background:rgba(255,255,255,0.07)!important;border:1px solid rgba(201,168,76,0.25)!important;color:#f3ede2!important;border-radius:6px!important;font-family:'DM Mono',monospace!important;}
 [data-testid="stSidebar"] .stSelectbox>div>div{background:rgba(255,255,255,0.07)!important;border:1px solid rgba(201,168,76,0.25)!important;border-radius:6px!important;}
@@ -67,11 +70,27 @@ summary{font-family:'DM Mono',monospace!important;font-size:12px!important;paddi
 </style>
 """, unsafe_allow_html=True)
 
-# ── Session State — starts empty for every new user ───────────────────────────
-if "portfolio"     not in st.session_state: st.session_state.portfolio     = {}
+# ── Demo portfolio — loads on first visit so ALL tabs are explorable ─────────
+DEMO_PORTFOLIO = {
+    "ASML": {"sector":"Semiconductor Equipment","shares":2.0, "avg_cost":850.0},
+    "AMAT": {"sector":"Semiconductor Equipment","shares":5.0, "avg_cost":195.0},
+    "LRCX": {"sector":"Semiconductor Equipment","shares":3.0, "avg_cost":820.0},
+    "KLAC": {"sector":"Semiconductor Equipment","shares":2.0, "avg_cost":680.0},
+    "ENTG": {"sector":"Semiconductor Materials","shares":8.0, "avg_cost":110.0},
+    "ADI":  {"sector":"Chip Components",        "shares":6.0, "avg_cost":190.0},
+    "TXN":  {"sector":"Chip Components",        "shares":5.0, "avg_cost":165.0},
+    "AVGO": {"sector":"Chip Components",        "shares":2.0, "avg_cost":1100.0},
+    "ALB":  {"sector":"Battery Materials",      "shares":4.0, "avg_cost":135.0},
+    "BHP":  {"sector":"Critical Metals",        "shares":10.0,"avg_cost":58.0},
+    "SPY":  {"sector":"ETF / Index",            "shares":3.0, "avg_cost":480.0},
+    "BIL":  {"sector":"Fixed Income",           "shares":20.0,"avg_cost":91.5},
+}
+
+# ── Session State ──────────────────────────────────────────────────────────────
+if "portfolio"     not in st.session_state: st.session_state.portfolio     = DEMO_PORTFOLIO.copy()
+if "is_demo"       not in st.session_state: st.session_state.is_demo       = True
 if "chat_history"  not in st.session_state: st.session_state.chat_history  = []
 if "api_key"       not in st.session_state: st.session_state.api_key       = ""
-if "watchlist"     not in st.session_state: st.session_state.watchlist     = []
 if "ib_memo"       not in st.session_state: st.session_state.ib_memo       = ""
 
 SECTOR_OPTIONS = [
@@ -94,7 +113,7 @@ PLOT = dict(
     margin=dict(t=30,b=30,l=10,r=10),
     colorway=["#c9a84c","#5c6b3a","#6b4f2e","#8a9e5a","#2a5298","#e8c97a","#b84c3a","#4a90d9"],
 )
-SYSTEM_PROMPT = """You are Sapphire, an elite AI financial advisor and teacher built into a portfolio management platform.
+SYSTEM_PROMPT = """You are Gekko, an elite AI financial advisor and teacher built into a portfolio management platform.
 You have full access to the user's real portfolio data. You combine Wall Street sharpness with professor-level clarity.
 Rules:
 1. Give accurate, sharp financial advice
@@ -212,8 +231,11 @@ with st.sidebar:
         nco=st.number_input("Avg Cost / Share ($)",min_value=0.0,value=0.0,step=0.01,key="nco",format="%.2f")
         if st.button("ADD ➕",key="add_btn"):
             if nt:
+                if st.session_state.is_demo:
+                    st.session_state.portfolio = {}
+                    st.session_state.is_demo = False
                 st.session_state.portfolio[nt]={"sector":ns,"shares":nsh,"avg_cost":nco}
-                st.success(f"✓ {nt}"); st.rerun()
+                st.success(f"✓ {nt} added! Demo cleared."); st.rerun()
             else: st.error("Enter a ticker")
 
     # Bulk add
@@ -223,12 +245,15 @@ with st.sidebar:
         bulk_sector=st.selectbox("Sector for all",SECTOR_OPTIONS,key="bulk_sec")
         if st.button("BULK ADD ➕",key="bulk_btn"):
             raw_tickers=[x.strip().upper() for x in bulk_in.replace(",","\n").split("\n") if x.strip()]
+            if raw_tickers and st.session_state.is_demo:
+                st.session_state.portfolio = {}
+                st.session_state.is_demo = False
             added=0
             for t in raw_tickers:
                 if t not in st.session_state.portfolio:
                     st.session_state.portfolio[t]={"sector":bulk_sector,"shares":0.0,"avg_cost":0.0}
                     added+=1
-            st.success(f"✓ Added {added} stocks"); st.rerun()
+            st.success(f"✓ Added {added} stocks — demo cleared!"); st.rerun()
 
     # Edit/Remove
     with st.expander("✏️ Edit / Remove"):
@@ -294,18 +319,22 @@ st.markdown("""
 
 # ── Empty state ───────────────────────────────────────────────────────────────
 tickers=list(st.session_state.portfolio.keys())
-if not tickers:
-    st.markdown("""
-    <div style="text-align:center;padding:80px 40px;background:var(--surface);border:1px solid var(--border);border-radius:16px;margin-top:20px">
-      <div style="font-family:'Cormorant Garamond',serif;font-size:56px;color:#c9a84c">💎</div>
-      <div style="font-family:'Cormorant Garamond',serif;font-size:28px;color:#3d2b10;margin-top:12px">Welcome to Gekko</div>
-      <div style="font-size:12px;color:#8a7560;margin-top:8px;line-height:1.8">
-        Add stocks, ETFs, or fixed income to your portfolio using the sidebar.<br>
-        You can add single tickers or bulk-paste an entire list at once.<br>
-        <strong style="color:#c9a84c">Try adding: SPY, QQQ, BND, ASML, NVDA</strong>
-      </div>
-    </div>""", unsafe_allow_html=True)
-    st.stop()
+
+# ── Demo banner ─────────────────────────────────────────────────────
+if st.session_state.is_demo:
+    demo_html = (
+        '<div style="background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.4);' +
+        'border-left:4px solid #c9a84c;border-radius:0 10px 10px 0;padding:14px 20px;' +
+        'margin-bottom:16px;display:flex;align-items:center;gap:14px">' +
+        '<div style="font-size:22px">🦎</div>' +
+        '<div><div style="font-size:12px;font-weight:600;color:#7a5c1e;letter-spacing:1px">' +
+        'DEMO MODE — Explore freely</div>' +
+        '<div style="font-size:11px;color:#8a7560;margin-top:3px;line-height:1.6">' +
+        'Viewing a sample supply chain portfolio. All tabs are fully active. ' +
+        '<strong style="color:#c9a84c">Add your own stock from the sidebar</strong> ' +
+        'to replace demo data with your real portfolio.</div></div></div>'
+    )
+    st.markdown(demo_html, unsafe_allow_html=True)
 
 # ── Fetch data ────────────────────────────────────────────────────────────────
 with st.spinner(""):
