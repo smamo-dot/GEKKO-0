@@ -417,6 +417,7 @@ with tab1:
                 val=(p or 0)*shares
                 clr="#3d6b3a" if chg>=0 else "#b84c3a"
                 arr="▲" if chg>=0 else "▼"
+                price_str = f"{p:,.2f}" if p else "N/A"
                 st.markdown(f"""
                 <div class="gk-row">
                     <div>
@@ -424,7 +425,7 @@ with tab1:
                         <span style="color:#8a7560;font-size:11px;margin-left:8px">{shares:.1f} sh</span>
                     </div>
                     <div style="text-align:center">
-                        <div style="font-size:16px;font-weight:500">${f"{p:,.2f}" if p else "N/A"}</div>
+                        <div style="font-size:16px;font-weight:500">${price_str}</div>
                         <div style="color:{clr};font-size:11px">{arr} {chg:+.2f}%</div>
                     </div>
                     <div style="text-align:right">
