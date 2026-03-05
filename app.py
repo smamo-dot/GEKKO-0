@@ -49,40 +49,8 @@ summary{font-family:'DM Mono',monospace!important;font-size:12px!important;paddi
 .gk-page-title{font-family:'Cormorant Garamond',serif;font-size:34px;font-weight:400;color:var(--brown2);margin-bottom:2px;}
 .gk-page-sub{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:20px;}
 
-/* ── SIDEBAR NAV ── */
-.gk-nav{position:fixed;top:0;left:0;height:100vh;background:var(--nav);
-border-right:1px solid rgba(201,168,76,0.15);z-index:999;
-display:flex;flex-direction:column;transition:width 0.25s ease;overflow:hidden;}
-.gk-nav.open{width:230px;}
-.gk-nav.closed{width:52px;}
-.gk-toggle{position:absolute;top:50%;right:-14px;transform:translateY(-50%);
-width:28px;height:28px;background:var(--gold);border-radius:50%;
-display:flex;align-items:center;justify-content:center;cursor:pointer;
-box-shadow:0 2px 8px rgba(0,0,0,0.3);z-index:1001;font-size:12px;color:var(--brown2);font-weight:700;
-border:2px solid var(--nav);transition:transform 0.25s;}
-.gk-nav-logo{padding:20px 14px 16px 14px;border-bottom:1px solid rgba(201,168,76,0.1);white-space:nowrap;overflow:hidden;}
-.gk-nav-logo-icon{font-size:22px;}
-.gk-nav-logo-text{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:600;color:#e8c97a;margin-left:8px;vertical-align:middle;}
-.gk-nav-logo-sub{font-size:8px;letter-spacing:3px;color:rgba(243,237,226,0.25);text-transform:uppercase;margin-top:3px;padding-left:32px;}
-.gk-nav-group{font-size:8px;letter-spacing:2.5px;text-transform:uppercase;color:rgba(232,201,122,0.3);padding:14px 14px 5px 14px;white-space:nowrap;overflow:hidden;}
-.gk-nav-item{display:flex;align-items:center;gap:12px;padding:11px 14px;cursor:pointer;
-transition:all 0.15s;border-left:3px solid transparent;white-space:nowrap;overflow:hidden;}
-.gk-nav-item:hover{background:rgba(201,168,76,0.08);border-left-color:rgba(201,168,76,0.3);}
-.gk-nav-item.active{background:rgba(201,168,76,0.14);border-left-color:var(--gold);}
-.gk-nav-icon{font-size:15px;min-width:20px;text-align:center;}
-.gk-nav-label{font-size:11px;color:rgba(243,237,226,0.6);letter-spacing:0.3px;transition:opacity 0.2s;}
-.gk-nav-item.active .gk-nav-label{color:#e8c97a;}
-.gk-nav-item:hover .gk-nav-label{color:rgba(243,237,226,0.9);}
-.gk-nav.closed .gk-nav-label{opacity:0;pointer-events:none;}
-.gk-nav.closed .gk-nav-group{opacity:0;}
-.gk-nav.closed .gk-nav-logo-text,.gk-nav.closed .gk-nav-logo-sub{opacity:0;}
-.gk-nav-bottom{margin-top:auto;padding:14px;border-top:1px solid rgba(201,168,76,0.1);white-space:nowrap;overflow:hidden;}
-.gk-nav-api{font-size:9px;color:rgba(243,237,226,0.3);margin-bottom:4px;}
-
 /* Main content */
-.gk-main{transition:margin-left 0.25s ease;padding:28px 32px;min-height:100vh;}
-.gk-main.open{margin-left:230px;}
-.gk-main.closed{margin-left:52px;}
+.gk-main{padding:0;min-height:100vh;}
 
 /* Demo banner */
 .demo-banner{background:rgba(201,168,76,0.1);border:1px solid rgba(201,168,76,0.3);border-left:4px solid var(--gold);border-radius:0 10px 10px 0;padding:12px 18px;margin-bottom:18px;display:flex;align-items:center;gap:12px;}
@@ -135,18 +103,13 @@ SYSTEM_PROMPT="""You are Gekko, an elite AI financial advisor and teacher inside
 You have the user's real portfolio data. Be sharp, accurate, warm, and always TEACH — explain every concept in plain language.
 Bold key terms. Reference actual holdings. Be the Wall Street mentor they need."""
 
-NAV = [
-    ("MAIN",  [("◈","Dashboard"),("📈","Performance")]),
-    ("ANALYSIS", [("🧮","Quant Analysis"),("🎲","Monte Carlo")]),
-    ("BANKING",  [("🏦","IB Models"),("📁","Financials")]),
-    ("PORTFOLIO",[("⚙️","Manage Portfolio")]),
-]
+PAGES = [("◈","Dashboard"),("📈","Performance"),("🧮","Quant Analysis"),
+    ("🎲","Monte Carlo"),("🏦","IB Models"),("📁","Financials"),("⚙️","Manage Portfolio")]
 
 # ── Session State ──────────────────────────────────────────────────────────────
 if "portfolio"    not in st.session_state: st.session_state.portfolio    = DEMO_PORTFOLIO.copy()
 if "is_demo"      not in st.session_state: st.session_state.is_demo      = True
 if "page"         not in st.session_state: st.session_state.page         = "Dashboard"
-if "nav_open"     not in st.session_state: st.session_state.nav_open     = True
 if "chat_history" not in st.session_state: st.session_state.chat_history = []
 if "show_chat"    not in st.session_state: st.session_state.show_chat    = False
 if "ib_memo"      not in st.session_state: st.session_state.ib_memo      = ""
@@ -239,58 +202,34 @@ sectors_map={}
 for t,d in st.session_state.portfolio.items():
     sectors_map.setdefault(d["sector"],[]).append(t)
 
-# ── SIDEBAR NAV HTML ──────────────────────────────────────────────────────────
-nav_state = "open" if st.session_state.nav_open else "closed"
-toggle_arrow = "‹" if st.session_state.nav_open else "›"
-
-nav_items_html = ""
-for group_name, items in NAV:
-    nav_items_html += f'<div class="gk-nav-group">{group_name}</div>'
-    for icon, page_name in items:
-        active = "active" if st.session_state.page == page_name else ""
-        nav_items_html += f'''<div class="gk-nav-item {active}" id="navbtn-{page_name}">
-            <span class="gk-nav-icon">{icon}</span>
-            <span class="gk-nav-label">{page_name}</span>
-        </div>'''
-
-api_dot = "🟢" if st.session_state.api_key else "🔴"
-demo_badge = '<div style="background:rgba(201,168,76,0.2);border-radius:4px;padding:2px 6px;font-size:8px;letter-spacing:1px;color:#c9a84c;text-align:center;margin-bottom:6px">DEMO</div>' if st.session_state.is_demo else ""
-
-st.markdown(f"""
-<div class="gk-nav {nav_state}" id="gk-nav">
-  <div class="gk-nav-logo">
-    <span class="gk-nav-icon gk-nav-logo-icon">🦎</span>
-    <span class="gk-nav-logo-text">Gekko</span>
-    <div class="gk-nav-logo-sub">Finance Intelligence</div>
+# ── TOP NAV ────────────────────────────────────────────────────────────────────
+# Header
+st.markdown('''
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+  <div>
+    <span style="font-family:Cormorant Garamond,serif;font-size:36px;font-weight:300;letter-spacing:-1.5px;color:#3d2b10">🦎 Gekko <em style='color:#c9a84c;font-style:italic'>Finance</em></span>
   </div>
-  {nav_items_html}
-  <div class="gk-nav-bottom">
-    {demo_badge}
-    <div class="gk-nav-api">{api_dot} AI Advisor</div>
+  <div style="font-family:Cormorant Garamond,serif;font-size:12px;color:#8a7560;text-align:right">
+    "The most valuable commodity I know of is information."<br>
+    <span style="color:#c9a84c">— Gordon Gekko</span>
   </div>
 </div>
-<div class="gk-main {nav_state}" id="gk-main">
-""", unsafe_allow_html=True)
+''', unsafe_allow_html=True)
 
-# ── NAV TOGGLE + PAGE BUTTONS (Streamlit) ─────────────────────────────────────
-all_pages = [page_name for _,items in NAV for _,page_name in items]
-
-# Toggle button
-tog_col, *page_cols = st.columns([1]+[2]*len(all_pages))
-with tog_col:
-    arrow = "◀" if st.session_state.nav_open else "▶"
-    if st.button(arrow, key="nav_toggle", help="Toggle sidebar"):
-        st.session_state.nav_open = not st.session_state.nav_open
-        st.rerun()
-
-for col, page_name in zip(page_cols, all_pages):
-    icon = next(ic for _,items in NAV for ic,pg in items if pg==page_name)
+cols = st.columns(len(PAGES))
+for col, (icon, page_name) in zip(cols, PAGES):
     with col:
-        is_active = st.session_state.page == page_name
-        label = f"**{icon} {page_name}**" if is_active else f"{icon} {page_name}"
-        if st.button(label, key=f"nav_{page_name}", use_container_width=True):
+        if st.button(f"{icon} {page_name}", key=f"nav_{page_name}", use_container_width=True):
             st.session_state.page = page_name
             st.rerun()
+
+# Highlight active page
+active_idx = [p for _,p in PAGES].index(st.session_state.page)
+highlight_cols = st.columns(len(PAGES))
+for i, col in enumerate(highlight_cols):
+    with col:
+        if i == active_idx:
+            st.markdown('<div style="height:3px;background:linear-gradient(90deg,#c9a84c,#e8c97a);border-radius:2px;margin-top:-12px"></div>', unsafe_allow_html=True)
 
 st.markdown("<hr style='border-color:#d4c4a8;margin:8px 0 20px 0'>", unsafe_allow_html=True)
 
@@ -792,7 +731,6 @@ elif page == "Manage Portfolio":
 # ══════════════════════════════════════════════════════
 # FLOATING AI ADVISOR (every page)
 # ══════════════════════════════════════════════════════
-st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("""
 <div style="position:fixed;bottom:28px;right:28px;z-index:1000">
