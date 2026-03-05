@@ -183,6 +183,53 @@ def portfolio_ctx():
         return "\n".join(lines)
     except: return "Portfolio unavailable."
 
+def extract_doc_text(uploaded_file):
+    """Extract text from PDF, CSV, Excel, TXT — returns (text, summary_label)"""
+    name = uploaded_file.name.lower()
+    try:
+        if name.endswith(".csv"):
+            df = pd.read_csv(uploaded_file)
+            return "CSV Document (" + str(len(df)) + " rows):\n" + df.to_string(max_rows=80), "CSV · " + str(len(df)) + " rows"
+        elif name.endswith((".xlsx", ".xls")):
+            df = pd.read_excel(uploaded_file)
+            return "Excel Document (" + str(len(df)) + " rows):\n" + df.to_string(max_rows=80), "Excel · " + str(len(df)) + " rows"
+        elif name.endswith(".txt"):
+            text = uploaded_file.read().decode("utf-8", errors="ignore")
+            return text[:10000], f"TXT · {len(text)} chars"
+        elif name.endswith(".pdf"):
+            # Try pdfplumber first
+            try:
+                import pdfplumber
+                uploaded_file.seek(0)
+                with pdfplumber.open(uploaded_file) as pdf:
+                    pages = pdf.pages[:20]
+                    parts = ["[Page " + str(i+1) + "]\n" + (p.extract_text() or "") for i,p in enumerate(pages)]
+                    text = "\n\n".join(parts).strip()
+                    n_pages = len(pdf.pages)
+                if text and len(text) > 100:
+                    return text[:12000], "PDF · " + str(n_pages) + " pages"
+            except Exception:
+                pass
+            # Fallback: try PyPDF2
+            try:
+                import PyPDF2
+                uploaded_file.seek(0)
+                reader = PyPDF2.PdfReader(uploaded_file)
+                parts2 = ["[Page " + str(i+1) + "]\n" + (reader.pages[i].extract_text() or "") for i in range(min(20, len(reader.pages)))]
+                text = "\n\n".join(parts2)
+                n_pages2 = len(reader.pages)
+                if text.strip():
+                    return text[:12000], "PDF · " + str(n_pages2) + " pages"
+            except Exception:
+                pass
+            # Last fallback
+            return "Document: " + uploaded_file.name + " (PDF — AI will analyze based on filename)", "PDF · " + uploaded_file.name
+        else:
+            text = uploaded_file.read().decode("utf-8", errors="ignore")
+            return text[:10000], "File · " + uploaded_file.name
+    except Exception as e:
+        return f"Could not extract text: {e}", "Error"
+
 def clear_demo():
     if st.session_state.is_demo:
         st.session_state.portfolio={}
@@ -473,6 +520,51 @@ elif page == "Monte Carlo":
 # ══════════════════════════════════════════════════════
 elif page == "IB Models":
     st.markdown('<div class="gk-page-title">Investment Banking</div><div class="gk-page-sub">DCF · Comps · Precedent Transactions · LBO · Ratios · Document Memo</div>', unsafe_allow_html=True)
+
+    # ── Document upload zone (top of IB dashboard) ──
+    st.markdown('<div class="gk-section">Upload Financial Document</div>', unsafe_allow_html=True)
+    st.markdown("""<div class="teach"><strong>📄 Drop any document here</strong> — 10-K, 10-Q, earnings transcript, investor presentation, balance sheet, annual report.
+    Supports <strong>PDF, Excel, CSV, TXT</strong>. Once uploaded, it will be used automatically in the Document Memo tab and any AI analysis below.</div>""", unsafe_allow_html=True)
+
+    ib_upload_col, ib_info_col = st.columns([3,2])
+    with ib_upload_col:
+        ib_top_doc = st.file_uploader(
+            "Upload 10-K, Annual Report, Earnings, Balance Sheet...",
+            type=["pdf","csv","xlsx","xls","txt"],
+            key="ib_top_doc",
+            label_visibility="collapsed"
+        )
+    with ib_info_col:
+        st.markdown("""<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;font-size:11px;color:#8a7560;line-height:1.8">
+        <strong style="color:#7a5c1e">Accepted formats</strong><br>
+        📕 PDF — 10-K, 10-Q, Annual Reports<br>
+        📊 Excel / CSV — Financial statements<br>
+        📝 TXT — Earnings transcripts, notes<br>
+        <span style="color:#c9a84c">Source: SEC EDGAR · Investor Relations · Bloomberg</span>
+        </div>""", unsafe_allow_html=True)
+
+    # Store extracted doc text in session state
+    if "ib_doc_text" not in st.session_state: st.session_state.ib_doc_text = ""
+    if "ib_doc_name" not in st.session_state: st.session_state.ib_doc_name = ""
+
+    if ib_top_doc:
+        with st.spinner("Reading document..."):
+            doc_text, doc_label = extract_doc_text(ib_top_doc)
+            st.session_state.ib_doc_text = doc_text
+            st.session_state.ib_doc_name = ib_top_doc.name
+        st.success(f"✓ Loaded: {ib_top_doc.name} ({doc_label})")
+        if st.session_state.ib_doc_text and len(st.session_state.ib_doc_text) > 100:
+            with st.expander("Preview extracted text"):
+                st.text(st.session_state.ib_doc_text[:2000] + "..." if len(st.session_state.ib_doc_text)>2000 else st.session_state.ib_doc_text)
+
+    if st.session_state.ib_doc_name:
+        st.markdown(f'<div style="font-size:11px;color:#5c6b3a;margin-bottom:4px">📄 Active document: <strong>{st.session_state.ib_doc_name}</strong> — will be used in Document Memo & AI analysis</div>', unsafe_allow_html=True)
+        if st.button("✕ Clear document", key="clear_doc"):
+            st.session_state.ib_doc_text = ""; st.session_state.ib_doc_name = ""; st.rerun()
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── Company selector ──
     ic1,ic2=st.columns([2,3])
     with ic1: ib_port=st.selectbox("From portfolio",["— enter below —"]+tickers,key="ib_port")
     with ic2: ib_cust=st.text_input("Or any ticker","",placeholder="MSFT, TSLA, 0700.HK...",key="ib_cust").upper().strip()
@@ -581,42 +673,47 @@ elif page == "IB Models":
             col.markdown(f'<div class="gk-card"><div class="gk-label">{lbl}</div><div class="gk-value" style="font-size:18px">{val}</div></div>', unsafe_allow_html=True)
 
     with ib6:
-        st.markdown("""<div class="teach"><strong>📚 Document Memo Generator</strong> — Upload any financial document: 10-K, earnings transcript, balance sheet, investor deck.
-        Gekko AI reads it and generates a professional Goldman Sachs style IB memo with thesis, risks, and valuation.</div>""", unsafe_allow_html=True)
+        st.markdown("""<div class="teach"><strong>📚 Document Memo Generator</strong> — Upload any 10-K, earnings transcript,
+        balance sheet, or investor deck (PDF, Excel, CSV, TXT). Gekko AI reads the full document and writes a professional
+        Goldman Sachs style IB memo with company overview, financial highlights, investment thesis, risks, and valuation.</div>""", unsafe_allow_html=True)
         if not st.session_state.api_key:
             st.warning("Add your Anthropic API key in Manage Portfolio → Settings to use this feature.")
         else:
-            doc_up=st.file_uploader("Upload Document (PDF, CSV, Excel, TXT)",type=["pdf","csv","xlsx","xls","txt"],key="ib_doc")
-            doc_ctx=""
-            if doc_up:
-                try:
-                    if doc_up.name.endswith(".csv"): doc_ctx=f"CSV:\n{pd.read_csv(doc_up).to_string(max_rows=60)}"
-                    elif doc_up.name.endswith((".xlsx",".xls")): doc_ctx=f"Excel:\n{pd.read_excel(doc_up).to_string(max_rows=60)}"
-                    elif doc_up.name.endswith(".txt"): doc_ctx=doc_up.read().decode("utf-8",errors="ignore")[:8000]
-                    elif doc_up.name.endswith(".pdf"):
-                        doc_ctx=f"PDF: {doc_up.name}"
-                        try:
-                            import pdfplumber
-                            with pdfplumber.open(doc_up) as pdf:
-                                doc_ctx="PDF:\n"+"".join([p.extract_text() or "" for p in pdf.pages[:10]])[:8000]
-                        except: pass
-                    st.success(f"✓ Loaded: {doc_up.name}")
-                except Exception as e: st.error(f"Could not read: {e}")
-            mt=st.selectbox("Memo Type",["Full IB Memo","Executive Summary","Risk Analysis","Investment Thesis"],key="memo_type")
-            if st.button("◈ GENERATE MEMO",key="gen_memo"):
-                with st.spinner("Generating professional memo..."):
-                    ctx=doc_ctx if doc_ctx else f"Analyze {ib_t} as an IB target."
-                    prompt=f"""You are a senior Goldman Sachs banker. Write a professional {mt}.
+            if st.session_state.get("ib_doc_name",""):
+                st.markdown(f'<div style="background:rgba(92,107,58,0.1);border:1px solid rgba(92,107,58,0.3);border-left:3px solid #5c6b3a;border-radius:0 8px 8px 0;padding:10px 14px;font-size:12px;color:#5c6b3a;margin-bottom:10px">📄 Using: <strong>{st.session_state.ib_doc_name}</strong> — uploaded at top of this page</div>', unsafe_allow_html=True)
+            memo_doc_up=st.file_uploader("Upload or replace document (PDF, Excel, CSV, TXT)",type=["pdf","csv","xlsx","xls","txt"],key="ib_doc_memo")
+            if memo_doc_up:
+                with st.spinner("Reading document..."):
+                    doc_text,doc_label=extract_doc_text(memo_doc_up)
+                    st.session_state.ib_doc_text=doc_text
+                    st.session_state.ib_doc_name=memo_doc_up.name
+                st.success(f"✓ Loaded: {memo_doc_up.name} ({doc_label})")
+            doc_ctx=st.session_state.get("ib_doc_text","")
+            mc1,mc2=st.columns([3,1])
+            with mc1:
+                mt=st.selectbox("Memo Type",["Full IB Memo","Executive Summary","Risk Analysis","Investment Thesis","Credit Analysis","M&A Target Assessment"],key="memo_type")
+            with mc2:
+                st.markdown("<div style='height:28px'></div>",unsafe_allow_html=True)
+                run_memo=st.button("◈ GENERATE MEMO",key="gen_memo",use_container_width=True)
+            if run_memo:
+                with st.spinner("Generating memo..."):
+                    if doc_ctx:
+                        prompt=f"""You are a senior Goldman Sachs banker. Write a professional {mt}.
 Company: {ib_t}
-Document: {ctx[:6000]}
-Include: 1) Company Overview 2) Financial Highlights 3) Investment Thesis 4) Key Risks 5) Valuation 6) Recommendation
-Be specific. Professional IB style."""
+Document Content:
+{doc_ctx[:8000]}
+Sections: 1) Company Overview 2) Financial Highlights (use numbers from doc) 3) Investment Thesis 4) Key Risks (3-5 specific) 5) Valuation Perspective 6) Recommendation. Professional IB tone. Be specific with numbers."""
+                    else:
+                        prompt=f"Write a professional {mt} for {ib_t}. Sections: Company Overview, Financial Highlights, Investment Thesis, Key Risks, Valuation, Recommendation."
                     st.session_state.ib_memo=ask_ai([{"role":"user","content":prompt}],
-                        "You are a senior Goldman Sachs investment banker.",st.session_state.api_key)
+                        "You are a senior Goldman Sachs investment banker producing professional-grade memos.",st.session_state.api_key)
             if st.session_state.ib_memo:
+                st.markdown('<div class="gk-section">Generated Memo</div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="chat-ai" style="max-width:100%;white-space:pre-wrap;margin-top:12px">{st.session_state.ib_memo}</div>', unsafe_allow_html=True)
-                st.download_button("⬇ Download Memo",data=st.session_state.ib_memo,
-                    file_name=f"gekko_memo_{ib_t}.txt",mime="text/plain",key="dl_memo")
+                dl1,dl2=st.columns([2,6])
+                with dl1: st.download_button("⬇ Download Memo",data=st.session_state.ib_memo,file_name=f"gekko_memo_{ib_t}.txt",mime="text/plain",key="dl_memo")
+                with dl2:
+                    if st.button("🔄 Regenerate",key="regen_memo"): st.session_state.ib_memo=""; st.rerun()
 
 # ══════════════════════════════════════════════════════
 # PAGE: FINANCIALS
@@ -639,15 +736,31 @@ elif page == "Financials":
         with ft3:
             if fins.get("cashflow") is not None and not fins["cashflow"].empty: st.dataframe(fins["cashflow"],use_container_width=True)
             else: st.info("No cash flow data available.")
-    st.markdown('<div class="gk-section">Upload Your Own Document</div>', unsafe_allow_html=True)
-    st.markdown("""<div class="teach"><strong>Source files from:</strong> SEC EDGAR (sec.gov), company investor relations pages, or Bloomberg/FactSet exports.</div>""", unsafe_allow_html=True)
-    up=st.file_uploader("CSV or Excel",type=["csv","xlsx","xls"],key="fin_upload")
+    st.markdown('<div class="gk-section">Upload Financial Document</div>', unsafe_allow_html=True)
+    st.markdown("""<div class="teach"><strong>Upload any format:</strong> PDF (10-K, annual reports, earnings), Excel/CSV (financial statements, exports from Bloomberg/FactSet), or TXT (transcripts, notes).
+    Source files from <strong>SEC EDGAR</strong> (sec.gov), company investor relations, or Bloomberg exports.</div>""", unsafe_allow_html=True)
+    up=st.file_uploader("PDF, Excel, CSV, or TXT",type=["pdf","csv","xlsx","xls","txt"],key="fin_upload")
     if up:
-        try:
-            df_up=pd.read_csv(up) if up.name.endswith(".csv") else pd.read_excel(up)
-            st.dataframe(df_up,use_container_width=True)
-            st.success(f"✓ {len(df_up)} rows × {len(df_up.columns)} columns")
-        except Exception as e: st.error(f"Could not read: {e}")
+        fin_text, fin_label = extract_doc_text(up)
+        st.success(f"✓ {up.name} ({fin_label})")
+        # If it's tabular show as dataframe, else show text
+        if up.name.lower().endswith((".csv",".xlsx",".xls")):
+            try:
+                df_up=pd.read_csv(up) if up.name.endswith(".csv") else pd.read_excel(up)
+                st.dataframe(df_up,use_container_width=True)
+            except: st.text(fin_text[:3000])
+        else:
+            with st.expander("View extracted content"):
+                st.text(fin_text[:4000] + ("..." if len(fin_text)>4000 else ""))
+        if st.session_state.api_key:
+            if st.button("◈ Analyze this document with AI", key="analyze_fin_doc"):
+                with st.spinner("Analyzing..."):
+                    analysis = ask_ai(
+                        [{"role":"user","content":"Analyze this financial document and extract key metrics, trends, and insights:\n\n" + fin_text[:8000]}],
+                        "You are a senior financial analyst. Extract and explain key financial data, metrics, and trends from documents clearly and concisely.",
+                        st.session_state.api_key
+                    )
+                st.markdown(f'<div class="chat-ai" style="white-space:pre-wrap;margin-top:12px">{analysis}</div>', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════
 # PAGE: MANAGE PORTFOLIO
